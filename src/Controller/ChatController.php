@@ -2,57 +2,72 @@
 
 namespace App\Controller;
 
-use LLPhant\Chat\MistralChat;
-use LLPhant\MistralConfig;
-use LLPhant\Chat\Message;
-use LLPhant\Chat\Enums\ChatRole;
+use LLPhant\Chat\MistralAIChat;
+use LLPhant\MistralAIConfig;
+use LLPhant\Embeddings\EmbeddingGenerator\Mistral\MistralEmbeddingGenerator;
+use LLPhant\Embeddings\VectorStores\FileSystem\FileSystemVectorStore;
+use LLPhant\Query\SemanticSearch\QuestionAnswering;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 class ChatController extends AbstractController
 {
     #[Route('/api/chat', name: 'api_chat', methods: ['POST'])]
-    public function index(Request $request): JsonResponse
+    public function index(
+        Request $request,
+        #[Autowire('%kernel.project_dir%')] string $projectDir
+    ): JsonResponse
     {
-        // 1. Récupérer le message envoyé par le front (ou Postman)
         $data = json_decode($request->getContent(), true);
-        $userContent = $data['message'] ?? null;
+        $question = $data['message'] ?? null;
 
-        if (!$userContent) {
-            return $this->json(['error' => 'Le message est vide 😔'], 400);
+        if (!$question) {
+            return $this->json(['error' => 'Message vide'], 400);
         }
 
-        // 2. Configuration de Mistral
-        // On récupère la clé depuis le fichier .env
-        $config = new MistralConfig();
-        $config->apiKey = $_ENV['MISTRAL_API_KEY'];
-        // Tu peux choisir le modèle : 'mistral-tiny', 'mistral-small', 'mistral-medium', 'mistral-large-latest'
-        $config->model = 'mistral-small-latest';
-
-        $chat = new MistralChat($config);
-
-        // 3. Création du message système (pour donner une personnalité au bot)
-        $systemMessage = new Message();
-        $systemMessage->role = ChatRole::System;
-        $systemMessage->content = "Tu es un assistant sympathique et expert en développement Web.";
-
-        // 4. Création du message utilisateur
-        $userMessage = new Message();
-        $userMessage->role = ChatRole::User;
-        $userMessage->content = $userContent;
-
-        // 5. Envoi à Mistral et récupération de la réponse
-        // On envoie un tableau de messages (l'historique)
         try {
-            $response = $chat->generateChat([$systemMessage, $userMessage]);
+            $apiKey = $_ENV['MISTRAL_API_KEY'] ?? null;
+            if (!$apiKey) {
+                throw new \Exception('Clé API Mistral manquante.');
+            }
+
+            // 1. CONFIGURATION
+            $config = new MistralAIConfig();
+            $config->apiKey = $apiKey;
+
+            // 2. EMBEDDINGS
+            // On enlève le setClient qui n'existe pas
+            $embeddingGenerator = new MistralEmbeddingGenerator($config);
+
+            // 3. VECTOR STORE
+            $vectorPath = $projectDir . '/var/vector_store.json';
+            if (!file_exists($vectorPath)) {
+                throw new \Exception("Fichier vector_store.json introuvable.");
+            }
+            $vectorStore = new FileSystemVectorStore($vectorPath);
+
+            // 4. CHAT
+            // On utilise bien MistralAIChat
+            $chat = new MistralAIChat($config);
+
+            // 5. QUESTION ANSWERING
+            $qa = new QuestionAnswering($vectorStore, $embeddingGenerator, $chat);
+
+            $qa->systemMessageTemplate = "Tu es un expert. Utilise ce contexte pour répondre : {context}. Question : {question}";
+
+            $answer = $qa->answerQuestion($question);
 
             return $this->json([
-                'response' => $response->getContent()
+                'response' => $answer
             ]);
-        } catch (\Exception $e) {
-            return $this->json(['error' => $e->getMessage()], 500);
+
+        } catch (\Throwable $e) { // Throwable attrape TOUT (Erreurs et Exceptions)
+            return $this->json([
+                'error' => 'Erreur : ' . $e->getMessage()
+            ], 500);
         }
     }
 }

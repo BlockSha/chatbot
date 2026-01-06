@@ -1,7 +1,12 @@
 # config/routes.yaml
 
-controllers:
-    resource:
-        path: ../src/Controller/
-        namespace: App\Controller
-    type: attribute
+# 1. La page d'accueil
+app_home:
+    path: /
+    controller: App\Controller\HomeController::index
+
+# 2. L'API pour le chat
+api_chat:
+    path: /api/chat
+    controller: App\Controller\ChatController::index
+    methods: [POST]
