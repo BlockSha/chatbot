@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mon Chatbot Mistral</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Petite animation pour le chargement */
+        .typing-dot {
+            animation: typing 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col font-sans">
+
+<header class="p-4 border-b border-gray-700 text-center shadow-md bg-gray-800">
+    <h1 class="text-xl font-bold text-blue-400">🤖 Mon Chatbot Symfony</h1>
+</header>
+
+<main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
+    <div class="flex justify-start">
+        <div class="bg-gray-700 rounded-lg p-3 max-w-[80%] text-gray-200 shadow">
+            Bonjour ! Je suis ton assistant IA. Pose-moi une question sur ton code ou autre chose !
+        </div>
+    </div>
+</main>
+
+<footer class="p-4 bg-gray-800 border-t border-gray-700">
+    <div class="max-w-3xl mx-auto w-full relative">
+        <form id="chat-form" class="flex gap-2">
+            <input
+                type="text"
+                id="user-input"
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition shadow-inner"
+                placeholder="Envoyez un message..."
+                autocomplete="off"
+            >
+            <button
+                type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-6 py-2 font-semibold transition shadow-lg flex items-center"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                </svg>
+            </button>
+        </form>
+    </div>
+</footer>
+
+<script>
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('user-input');
+    const container = document.getElementById('chat-container');
+
+    // Fonction pour ajouter un message dans le HTML
+    function appendMessage(text, sender) {
+        const div = document.createElement('div');
+        // Alignement : Droite pour User, Gauche pour Bot
+        div.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+
+        const bubble = document.createElement('div');
+        // Couleurs : Bleu pour User, Gris pour Bot
+        bubble.className = sender === 'user'
+            ? 'bg-blue-600 text-white rounded-lg p-3 max-w-[80%] shadow'
+            : 'bg-gray-700 text-gray-200 rounded-lg p-3 max-w-[80%] shadow';
+
+        // Pour le bot, on interprète les sauts de ligne
+        bubble.innerHTML = text.replace(/\n/g, '<br>');
+
+        div.appendChild(bubble);
+        container.appendChild(div);
+
+        // Scroll automatique vers le bas
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // Fonction pour afficher l'indicateur de chargement "..."
+    function showLoading() {
+        const id = 'loading-' + Date.now();
+        const html = `
+                <div id="${id}" class="flex justify-start">
+                    <div class="bg-gray-700 rounded-lg p-4 shadow flex space-x-1">
+                        <div class="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+                        <div class="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+                        <div class="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+                    </div>
+                </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+        container.scrollTop = container.scrollHeight;
+        return id;
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = input.value.trim();
+        if (!message) return;
+
+        // 1. Afficher le message utilisateur
+        appendMessage(message, 'user');
+        input.value = '';
+
+        // 2. Afficher le chargement
+        const loadingId = showLoading();
+
+        try {
+            // 3. Envoyer à ton API Symfony
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+
+            const data = await response.json();
+
+            // 4. Supprimer le chargement et afficher la réponse
+            document.getElementById(loadingId).remove();
+
+            if (data.error) {
+                appendMessage("Erreur : " + data.error, 'bot');
+            } else {
+                appendMessage(data.response, 'bot');
+            }
+
+        } catch (error) {
+            document.getElementById(loadingId).remove();
+            appendMessage("Oups, une erreur réseau est survenue.", 'bot');
+        }
+    });
+</script>
+</body>
+</html>
